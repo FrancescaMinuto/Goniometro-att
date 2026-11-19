@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Caccia agli Angoli 3D</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js UMD affidabile e immediato -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@800;900&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Nunito', sans-serif;
+      margin: 0;
+      overflow: hidden;
+      background-color: #0f172a;
+      user-select: none;
+    }
+    #canvas-box { touch-action: none; }
+    @keyframes bouncePop {
+      0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+      70% { transform: translate(-50%, -50%) scale(1.18); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    }
+    .pop-letter { animation: bouncePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+    .tile { cursor: grab; transition: transform 0.12s, box-shadow 0.12s; touch-action: none; }
+    .tile:active { cursor: grabbing; transform: translate(-50%, -50%) scale(1.12); }
+    .slot.over { background-color: #fde047 !important; border-color: #f59e0b !important; transform: scale(1.08); }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col lg:flex-row overflow-hidden">
+
+  <!-- AREA 3D GONIOMETRO (Sinistra / Alto) -->
+  <main id="canvas-box" class="relative flex-1 h-[54vh] lg:h-full w-full bg-slate-900 overflow-hidden">
+    
+    <!-- Angolo attuale gigante -->
+    <div class="absolute top-3 left-3 z-10 bg-slate-900/90 border-4 border-amber-400 rounded-3xl px-5 py-2 shadow-xl flex items-center gap-3 pointer-events-none">
+      <span class="text-3xl">🧭</span>
+      <span id="big-angle" class="text-4xl sm:text-5xl font-black text-amber-300 tabular-nums">0°</span>
+    </div>
+
+    <!-- Pulsante Aiuto (mostra il cerchietto solo su richiesta) -->
+    <button id="btn-help" class="absolute top-3 right-3 z-10 bg-amber-400 hover:bg-amber-300 border-4 border-amber-200 text-slate-950 font-black text-base sm:text-lg px-4 py-2 rounded-2xl shadow-xl active:scale-95 transition">
+      💡 Aiuto
+    </button>
+
+    <!-- Livello in alto al centro -->
+    <div id="level-pill" class="hidden sm:flex absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-indigo-950/90 border-2 border-indigo-400 text-indigo-100 font-black text-base px-4 py-1.5 rounded-full shadow pointer-events-none">
+      Parola 1 / 5
+    </div>
+
+    <!-- Spazio dove spuntano le letterine direttamente vicino agli angoli trovati -->
+    <div id="angle-letters-layer" class="absolute inset-0 z-20 pointer-events-none"></div>
+
+    <!-- Pulsanti Grandi -5° / +5° e Vista -->
+    <div class="absolute bottom-3 left-3 right-3 z-10 flex items-center justify-between gap-2 pointer-events-none">
+      <button id="btn-view" class="pointer-events-auto bg-slate-800/95 border-3 border-sky-400 text-white font-black text-base sm:text-lg px-4 py-2.5 rounded-2xl shadow-lg active:scale-95">
+        👁️ Dall'alto
+      </button>
+
+      <div class="pointer-events-auto flex items-center gap-2 bg-slate-800/95 border-3 border-emerald-400 p-1.5 rounded-2xl shadow-lg">
+        <button id="btn-minus" class="bg-rose-500 hover:bg-rose-400 text-white font-black text-xl sm:text-2xl px-4 py-2 rounded-xl active:scale-95">- 5°</button>
+        <button id="btn-plus" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xl sm:text-2xl px-4 py-2 rounded-xl active:scale-95">+ 5°</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- AREA GIOCO ESSENZIALE (Destra / Basso) -->
+  <aside class="w-full lg:w-[440px] h-[46vh] lg:h-full bg-amber-50 border-t-4 lg:border-t-0 lg:border-l-4 border-amber-400 p-4 flex flex-col justify-between gap-3 overflow-y-auto">
+
+    <!-- 1. CONSEGNA VISIVA CHIARA -->
+    <div id="goal-box" class="bg-gradient-to-br from-blue-600 to-indigo-700 border-4 border-blue-400 text-white rounded-3xl p-4 text-center shadow-lg">
+      <div class="text-base sm:text-lg font-extrabold uppercase tracking-wider text-blue-100">
+        Porta la lancetta su
+      </div>
+      <div id="goal-angle" class="text-5xl sm:text-6xl font-black text-amber-300 drop-shadow my-1">
+        30°
+      </div>
+      <div id="goal-hint" class="inline-block bg-white text-indigo-950 font-black text-base sm:text-lg px-5 py-1 rounded-full shadow">
+        ➡️ Avanti
+      </div>
+    </div>
+
+    <!-- 2. FORMA LA PAROLA -->
+    <div class="bg-white border-4 border-emerald-500 rounded-3xl p-4 text-center shadow-md flex-1 flex flex-col justify-center">
+      <div class="flex items-center justify-center gap-2 mb-3">
+        <span id="word-emoji" class="text-4xl">🧭</span>
+        <span class="text-lg sm:text-xl font-black text-emerald-950">Trascina qui le lettere</span>
+      </div>
+      <div id="slots-box" class="flex flex-wrap items-center justify-center gap-2.5">
+        <!-- Caselle -->
+      </div>
+    </div>
+
+    <!-- VITTORIA -->
+    <div id="win-box" class="hidden bg-gradient-to-br from-emerald-500 to-teal-600 border-4 border-emerald-300 text-white rounded-3xl p-4 text-center shadow-xl">
+      <div class="text-4xl mb-1">🎉 🌟 🎉</div>
+      <div id="win-word" class="text-3xl sm:text-4xl font-black mb-3">ROTTA!</div>
+      <button id="btn-next" class="w-full bg-amber-300 hover:bg-amber-200 text-slate-950 font-black text-xl sm:text-2xl py-3 rounded-2xl shadow-md active:scale-95">
+        Prossima parola ➡️
+      </button>
+    </div>
+
+  </aside>
+
+  <script>
+    // =========================================================
+    // 1. PAROLE DA SCOPRIRE (ROTTA + ALTRE PAROLE)
+    // =========================================================
+    const LEVELS = [
+      {
+        emoji: '🧭',
+        word: 'ROTTA',
+        steps: [
+          { deg: 30, letter: 'R' },
+          { deg: 60, letter: 'O' },
+          { deg: 90, letter: 'T' },
+          { deg: 120, letter: 'T' },
+          { deg: 150, letter: 'A' }
+        ]
+      },
+      {
+        emoji: '📐',
+        word: 'ANGOLO',
+        steps: [
+          { deg: 90, letter: 'A' },
+          { deg: 180, letter: 'N' },
+          { deg: 270, letter: 'G' },
+          { deg: 60, letter: 'O' },
+          { deg: 120, letter: 'L' },
+          { deg: 300, letter: 'O' }
+        ]
+      },
+      {
+        emoji: '☀️',
+        word: 'SOLE',
+        steps: [
+          { deg: 180, letter: 'S' },
+          { deg: 270, letter: 'O' },
+          { deg: 30, letter: 'L' },
+          { deg: 90, letter: 'E' }
+        ]
+      },
+      {
+        emoji: '🔄',
+        word: 'GIRO',
+        steps: [
+          { deg: 360, letter: 'G' },
+          { deg: 90, letter: 'I' },
+          { deg: 210, letter: 'R' },
+          { deg: 330, letter: 'O' }
+        ]
+      },
+      {
+        emoji: '⛵',
+        word: 'MARE',
+        steps: [
+          { deg: 150, letter: 'M' },
+          { deg: 240, letter: 'A' },
+          { deg: 300, letter: 'R' },
+          { deg: 60, letter: 'E' }
+        ]
+      }
+    ];
+
+    let currentAngle = 0;
+    let levelIdx = 0;
+    let stepIdx = 0;
+    let tiles = []; // { id, letter, deg, slot: null | number }
+    let slots = [];
+    let lockStep = false;
+    let isTopView = false;
+    let helpActive = false;
+
+    // Suono allegro
+    function playSound(win) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const notes = win ? [523, 659, 784, 1046] : [587, 880];
+        notes.forEach((f, i) => {
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'sine';
+          o.frequency.value = f;
+          g.gain.setValueAtTime(0.16, ctx.currentTime + i * 0.1);
+          g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.1 + 0.35);
+          o.connect(g);
+          g.connect(ctx.destination);
+          o.start(ctx.currentTime + i * 0.1);
+          o.stop(ctx.currentTime + i * 0.1 + 0.38);
+        });
+      } catch (e) {}
+    }
+
+    // =========================================================
+    // 2. SCENA 3D THREE.JS (COLORI RICCHI E SOLI ANGOLI PRINCIPALI)
+    // =========================================================
+    const box = document.getElementById('canvas-box');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f172a);
+
+    const camera = new THREE.PerspectiveCamera(38, box.clientWidth / Math.max(1, box.clientHeight), 0.1, 100);
+    const cam3D = new THREE.Vector3(0, 8.0, 4.3);
+    const camTop = new THREE.Vector3(0, 9.1, 0.01);
+    camera.position.copy(cam3D);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(box.clientWidth, box.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    box.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
+    dirLight.position.set(4, 10, 5);
+    scene.add(dirLight);
+
+    // Disegna corona graduata brillante con SOLI numeri principali ogni 30°
+    function makeDialTexture() {
+      const size = 1024;
+      const c = document.createElement('canvas');
+      c.width = size; c.height = size;
+      const ctx = c.getContext('2d');
+      const cx = size / 2, cy = size / 2;
+      const R_out = 492, R_in = 215;
+
+      // Gradiente radiale elegante blu notte -> cobalto
+      const grad = ctx.createRadialGradient(cx, cy, R_in, cx, cy, R_out);
+      grad.addColorStop(0, '#1e3a8a');
+      grad.addColorStop(0.65, '#1d4ed8');
+      grad.addColorStop(1, '#2563eb');
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, R_out, 0, Math.PI * 2);
+      ctx.arc(cx, cy, R_in, 0, Math.PI * 2, true);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Doppio bordo dorato luminoso
+      ctx.lineWidth = 10;
+      ctx.strokeStyle = '#fbbf24';
+      ctx.beginPath(); ctx.arc(cx, cy, R_out - 5, 0, Math.PI * 2); ctx.stroke();
+
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#60a5fa';
+      ctx.beginPath(); ctx.arc(cx, cy, R_in + 3, 0, Math.PI * 2); ctx.stroke();
+
+      // Tacche ogni 5° (piccole e pulite), ma NUMERI SOLO OGNI 30°!
+      for (let d = 0; d < 360; d += 5) {
+        const a = -Math.PI / 2 + (d / 360) * Math.PI * 2;
+        const isMain = d % 30 === 0;
+        const len = isMain ? 48 : 20;
+
+        ctx.beginPath();
+        ctx.moveTo(cx + (R_out - 10) * Math.cos(a), cy + (R_out - 10) * Math.sin(a));
+        ctx.lineTo(cx + (R_out - 10 - len) * Math.cos(a), cy + (R_out - 10 - len) * Math.sin(a));
+        ctx.strokeStyle = d === 0 ? '#fde047' : isMain ? '#ffffff' : 'rgba(255,255,255,0.45)';
+        ctx.lineWidth = d === 0 ? 10 : isMain ? 7 : 3;
+        ctx.stroke();
+
+        // Scrive SOLO gli angoli principali (0°, 30°, 60°, 90°, 120°, 150°, 180°, 210°, 240°, 270°, 300°, 330°)
+        if (isMain) {
+          const rTxt = 328;
+          const tx = cx + rTxt * Math.cos(a);
+          const ty = cy + rTxt * Math.sin(a);
+          ctx.save();
+          ctx.translate(tx, ty);
+          let rot = a + Math.PI / 2;
+          if (rot > Math.PI / 2 && rot < 1.5 * Math.PI) rot += Math.PI;
+          ctx.rotate(rot);
+
+          ctx.font = '900 46px Nunito, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = 8;
+          ctx.strokeStyle = 'rgba(15, 23, 42, 0.8)';
+          ctx.strokeText(d + '°', 0, 0);
+          ctx.fillStyle = d === 0 ? '#fde047' : '#ffffff';
+          ctx.fillText(d + '°', 0, 0);
+          ctx.restore();
+        }
+      }
+      return new THREE.CanvasTexture(c);
+    }
+
+    const goniometer = new THREE.Group();
+    scene.add(goniometer);
+
+    // Base elegante scura con bordo oro
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(3.48, 3.58, 0.26, 64),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.4, roughness: 0.3 })
+    );
+    base.position.y = -0.14;
+    goniometer.add(base);
+
+    // Disco centrale interno scuro brillante
+    const innerDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(1.45, 64),
+      new THREE.MeshBasicMaterial({ color: 0x0f172a })
+    );
+    innerDisc.rotation.x = -Math.PI / 2;
+    innerDisc.position.y = 0.008;
+    goniometer.add(innerDisc);
+
+    // Corona graduata principale
+    const dialGeo = new THREE.CircleGeometry(3.35, 96);
+    dialGeo.rotateX(-Math.PI / 2);
+    const dial = new THREE.Mesh(dialGeo, new THREE.MeshBasicMaterial({ map: makeDialTexture(), transparent: true }));
+    dial.position.y = 0.012;
+    goniometer.add(dial);
+
+    // Linea fissa 0° dorata
+    const zeroLine = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.03, 3.3),
+      new THREE.MeshBasicMaterial({ color: 0xfacc15 })
+    );
+    zeroLine.position.set(0, 0.025, -1.65);
+    goniometer.add(zeroLine);
+
+    // Cerchietto bersaglio (NASCOSTO di default, appare SOLO se si preme "Aiuto")
+    const targetPivot = new THREE.Group();
+    targetPivot.position.y = 0.04;
+    targetPivot.visible = false;
+    goniometer.add(targetPivot);
+    const targetRingGeo = new THREE.RingGeometry(0.24, 0.38, 32);
+    targetRingGeo.rotateX(-Math.PI / 2);
+    const targetRing = new THREE.Mesh(targetRingGeo, new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide }));
+    targetRing.position.set(0, 0.01, -3.12);
+    targetPivot.add(targetRing);
+
+    // Settore angolare luminoso
+    let sector = null;
+    const sectorMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.28, side: THREE.DoubleSide });
+    function drawSector(deg) {
+      if (sector) { goniometer.remove(sector); sector.geometry.dispose(); sector = null; }
+      if (deg <= 0) return;
+      const rad = (deg * Math.PI) / 180;
+      const g = new THREE.CircleGeometry(3.25, Math.max(12, Math.ceil((deg / 360) * 72)), Math.PI / 2 - rad, rad);
+      g.rotateX(-Math.PI / 2);
+      sector = new THREE.Mesh(g, sectorMat);
+      sector.position.y = 0.018;
+      goniometer.add(sector);
+    }
+
+    // Lancetta mobile brillante corallo/rosso
+    const pointer = new THREE.Group();
+    pointer.position.y = 0.055;
+    goniometer.add(pointer);
+
+    const arm = new THREE.Mesh(
+      new THREE.BoxGeometry(0.15, 0.05, 3.28),
+      new THREE.MeshStandardMaterial({ color: 0xf43f5e, emissive: 0xbe123c, emissiveIntensity: 0.35 })
+    );
+    arm.position.set(0, 0.02, -1.64);
+    pointer.add(arm);
+
+    const knob = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.32, 0.35, 0.18, 32),
+      new THREE.MeshStandardMaterial({ color: 0xfb7185, emissive: 0xe11d48, emissiveIntensity: 0.4 })
+    );
+    knob.position.set(0, 0.08, -3.22);
+    pointer.add(knob);
+
+    const centerPin = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.34, 0.38, 0.2, 32),
+      new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.5, roughness: 0.25 })
+    );
+    centerPin.position.y = 0.09;
+    goniometer.add(centerPin);
+
+    // =========================================================
+    // 3. INTERAZIONE TOUCH & MOUSE
+    // =========================================================
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let dragging = false;
+
+    function getAngleFromClient(cx, cy) {
+      const r = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((cx - r.left) / r.width) * 2 - 1;
+      mouse.y = -((cy - r.top) / r.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const pt = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), pt)) {
+        let rad = Math.atan2(pt.x, -pt.z);
+        if (rad < 0) rad += Math.PI * 2;
+        let deg = (rad * 180) / Math.PI;
+        deg = Math.round(deg / 5) * 5;
+        if (currentAngle > 330 && deg < 30) deg = 360;
+        if (currentAngle < 30 && deg > 330) deg = 0;
+        return Math.max(0, Math.min(360, deg));
+      }
+      return currentAngle;
+    }
+
+    const dom = renderer.domElement;
+    dom.addEventListener('mousedown', e => { dragging = true; setAngle(getAngleFromClient(e.clientX, e.clientY)); });
+    window.addEventListener('mousemove', e => { if (dragging) setAngle(getAngleFromClient(e.clientX, e.clientY)); });
+    window.addEventListener('mouseup', () => { dragging = false; });
+
+    dom.addEventListener('touchstart', e => {
+      e.preventDefault();
+      dragging = true;
+      setAngle(getAngleFromClient(e.touches[0].clientX, e.touches[0].clientY));
+    }, { passive: false });
+    window.addEventListener('touchmove', e => {
+      if (!dragging) return;
+      e.preventDefault();
+      setAngle(getAngleFromClient(e.touches[0].clientX, e.touches[0].clientY));
+    }, { passive: false });
+    window.addEventListener('touchend', () => { dragging = false; });
+
+    document.getElementById('btn-minus').onclick = () => setAngle(Math.max(0, currentAngle - 5));
+    document.getElementById('btn-plus').onclick = () => setAngle(Math.min(360, currentAngle + 5));
+    document.getElementById('btn-view').onclick = () => {
+      isTopView = !isTopView;
+      camera.position.copy(isTopView ? camTop : cam3D);
+      camera.lookAt(0, 0, 0);
+      document.getElementById('btn-view').textContent = isTopView ? '🎲 Vista 3D' : "👁️ Dall'alto";
+      positionAngleLetters();
+    };
+
+    // Pulsante Aiuto: mostra/nasconde il cerchietto verde sull'angolo da trovare
+    document.getElementById('btn-help').onclick = () => {
+      helpActive = !helpActive;
+      updateHelpRing();
+    };
+
+    function updateHelpRing() {
+      const lvl = LEVELS[levelIdx];
+      const btn = document.getElementById('btn-help');
+      if (helpActive && stepIdx < lvl.steps.length) {
+        targetPivot.visible = true;
+        targetPivot.rotation.y = -(lvl.steps[stepIdx].deg * Math.PI) / 180;
+        btn.classList.add('ring-4', 'ring-emerald-400');
+      } else {
+        targetPivot.visible = false;
+        btn.classList.remove('ring-4', 'ring-emerald-400');
+      }
+    }
+
+    // Proietta una coordinata 3D dell'angolo nello spazio 2D sopra il goniometro
+    function projectAngleToScreen(deg, radius3D = 2.55) {
+      const rad = (deg * Math.PI) / 180;
+      const vec = new THREE.Vector3(radius3D * Math.sin(rad), 0.15, -radius3D * Math.cos(rad));
+      vec.project(camera);
+      const x = (vec.x * 0.5 + 0.5) * box.clientWidth;
+      const y = (-vec.y * 0.5 + 0.5) * box.clientHeight;
+      return { x, y };
+    }
+
+    function positionAngleLetters() {
+      document.querySelectorAll('.angle-tile-wrapper').forEach(el => {
+        const deg = parseFloat(el.dataset.deg);
+        const pos = projectAngleToScreen(deg, 2.45);
+        el.style.left = pos.x + 'px';
+        el.style.top = pos.y + 'px';
+      });
+    }
+
+    // =========================================================
+    // 4. LOGICA GIOCO: LETTERA SPUNTA VICINO ALL'ANGOLO E SI TRASCINA
+    // =========================================================
+    function setAngle(deg) {
+      currentAngle = deg;
+      pointer.rotation.y = -(deg * Math.PI) / 180;
+      drawSector(deg);
+      document.getElementById('big-angle').textContent = deg + '°';
+
+      const lvl = LEVELS[levelIdx];
+      if (stepIdx >= lvl.steps.length || lockStep) return;
+
+      const target = lvl.steps[stepIdx].deg;
+      const hint = document.getElementById('goal-hint');
+
+      if (deg === target) {
+        lockStep = true;
+        dragging = false;
+        playSound(false);
+
+        const letter = lvl.steps[stepIdx].letter;
+        tiles.push({ id: 't' + stepIdx, letter, deg: target, slot: null });
+        hint.textContent = '🎉 Presa la ' + letter + '!';
+        hint.className = 'inline-block bg-emerald-400 text-slate-950 font-black text-lg px-5 py-1 rounded-full shadow';
+        renderGame();
+
+        setTimeout(() => {
+          stepIdx++;
+          lockStep = false;
+          helpActive = false; // Spegne l'aiuto per lo step successivo
+          updateGoal();
+        }, 850);
+      } else if (Math.abs(deg - target) <= 15) {
+        hint.textContent = '🔥 Vicinissimo!';
+        hint.className = 'inline-block bg-amber-300 text-slate-950 font-black text-lg px-5 py-1 rounded-full shadow';
+      } else if (deg < target) {
+        hint.textContent = '➡️ Avanti';
+        hint.className = 'inline-block bg-white text-indigo-950 font-black text-lg px-5 py-1 rounded-full shadow';
+      } else {
+        hint.textContent = '⬅️ Indietro';
+        hint.className = 'inline-block bg-white text-indigo-950 font-black text-lg px-5 py-1 rounded-full shadow';
+      }
+    }
+
+    function updateGoal() {
+      const lvl = LEVELS[levelIdx];
+      updateHelpRing();
+      if (stepIdx < lvl.steps.length) {
+        const st = lvl.steps[stepIdx];
+        document.getElementById('goal-angle').textContent = st.deg + '°';
+        setAngle(currentAngle);
+      } else {
+        document.getElementById('goal-angle').textContent = '✨ 🧩 ✨';
+        document.getElementById('goal-hint').textContent = 'Trascina le lettere nelle caselle!';
+      }
+    }
+
+    let draggedId = null;
+
+    function putTileInSlot(tileId, slotIndex) {
+      const t = tiles.find(x => x.id === tileId);
+      if (!t) return;
+      if (t.slot !== null) slots[t.slot] = null;
+      if (slots[slotIndex]) {
+        const old = tiles.find(x => x.id === slots[slotIndex]);
+        if (old) old.slot = null;
+      }
+      slots[slotIndex] = t.id;
+      t.slot = slotIndex;
+      renderGame();
+      checkWin();
+    }
+
+    function autoPlaceTile(tileId) {
+      const t = tiles.find(x => x.id === tileId);
+      if (!t) return;
+      if (t.slot !== null) {
+        slots[t.slot] = null;
+        t.slot = null;
+        renderGame();
+        return;
+      }
+      const free = slots.findIndex(s => s === null);
+      if (free !== -1) putTileInSlot(tileId, free);
+    }
+
+    function renderGame() {
+      const layer = document.getElementById('angle-letters-layer');
+      const slotsBox = document.getElementById('slots-box');
+      const lvl = LEVELS[levelIdx];
+
+      // 1) Lettere non ancora inserite: compaiono direttamente vicino all'angolo trovato!
+      layer.innerHTML = '';
+      const freeTiles = tiles.filter(t => t.slot === null);
+      freeTiles.forEach(t => {
+        const pos = projectAngleToScreen(t.deg, 2.45);
+        const el = document.createElement('div');
+        el.draggable = true;
+        el.dataset.deg = t.deg;
+        el.style.left = pos.x + 'px';
+        el.style.top = pos.y + 'px';
+        el.className = 'angle-tile-wrapper tile pop-letter pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-amber-400 border-4 border-white text-slate-950 text-4xl font-black flex items-center justify-center shadow-2xl';
+        el.textContent = t.letter;
+
+        // Drag & Drop standard desktop
+        el.ondragstart = e => {
+          draggedId = t.id;
+          e.dataTransfer.setData('text', t.id);
+        };
+
+        // Supporto trascinamento diretto su touchscreen (touchmove + release sullo slot)
+        el.ontouchstart = e => {
+          e.stopPropagation();
+          draggedId = t.id;
+        };
+        el.ontouchend = e => {
+          e.stopPropagation();
+          const touch = e.changedTouches[0];
+          const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+          const slotEl = targetEl ? targetEl.closest('.slot') : null;
+          if (slotEl && slotEl.dataset.slotIndex !== undefined) {
+            putTileInSlot(t.id, parseInt(slotEl.dataset.slotIndex, 10));
+          } else {
+            // Se fa solo tap, la mette automaticamente nella prima casella libera
+            autoPlaceTile(t.id);
+          }
+          draggedId = null;
+        };
+
+        // Click rapido desktop
+        el.onclick = e => {
+          e.stopPropagation();
+          autoPlaceTile(t.id);
+        };
+
+        layer.appendChild(el);
+      });
+
+      // 2) Caselle della parola
+      slotsBox.innerHTML = '';
+      for (let i = 0; i < lvl.word.length; i++) {
+        const s = document.createElement('div');
+        s.dataset.slotIndex = i;
+        const occ = slots[i] ? tiles.find(t => t.id === slots[i]) : null;
+        s.className = `slot w-14 h-16 sm:w-16 sm:h-18 rounded-2xl border-4 flex items-center justify-center text-3xl sm:text-4xl font-black transition ${
+          occ ? 'bg-emerald-300 border-emerald-600 text-emerald-950 cursor-pointer shadow' : 'bg-slate-100 border-dashed border-slate-400 text-slate-300'
+        }`;
+        s.textContent = occ ? occ.letter : '';
+        if (occ) {
+          s.onclick = () => {
+            occ.slot = null;
+            slots[i] = null;
+            renderGame();
+          };
+        }
+        s.ondragover = e => { e.preventDefault(); s.classList.add('over'); };
+        s.ondragleave = () => s.classList.remove('over');
+        s.ondrop = e => {
+          e.preventDefault();
+          s.classList.remove('over');
+          const id = e.dataTransfer.getData('text') || draggedId;
+          if (id) putTileInSlot(id, i);
+        };
+        slotsBox.appendChild(s);
+      }
+    }
+
+    function checkWin() {
+      const lvl = LEVELS[levelIdx];
+      const word = slots.map(id => {
+        const t = tiles.find(x => x.id === id);
+        return t ? t.letter : '';
+      }).join('');
+
+      if (word === lvl.word) {
+        playSound(true);
+        document.getElementById('goal-box').classList.add('hidden');
+        document.getElementById('win-word').textContent = lvl.emoji + ' ' + lvl.word + '!';
+        document.getElementById('win-box').classList.remove('hidden');
+      }
+    }
+
+    function startLevel(idx) {
+      levelIdx = idx % LEVELS.length;
+      stepIdx = 0;
+      tiles = [];
+      helpActive = false;
+      slots = new Array(LEVELS[levelIdx].word.length).fill(null);
+      document.getElementById('word-emoji').textContent = LEVELS[levelIdx].emoji;
+      document.getElementById('level-pill').textContent = `Parola ${levelIdx + 1} / ${LEVELS.length}`;
+      document.getElementById('goal-box').classList.remove('hidden');
+      document.getElementById('win-box').classList.add('hidden');
+      setAngle(0);
+      updateGoal();
+      renderGame();
+    }
+
+    document.getElementById('btn-next').onclick = () => startLevel(levelIdx + 1);
+
+    // Resize e animazione immediata
+    function onResize() {
+      if (!box.clientWidth || !box.clientHeight) return;
+      camera.aspect = box.clientWidth / box.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(box.clientWidth, box.clientHeight);
+      positionAngleLetters();
+    }
+    window.addEventListener('resize', onResize);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (targetPivot.visible) {
+        const s = 1 + Math.sin(Date.now() * 0.006) * 0.16;
+        targetRing.scale.set(s, 1, s);
+      }
+      renderer.render(scene, camera);
+    }
+
+    // Avvio immediato
+    startLevel(0);
+    onResize();
+    animate();
+  </script>
+</body>
+</html>
